@@ -7,11 +7,6 @@ pipeline {
     SONAR_KEY   = 'subscription'
   }
 
-  tools {
-    jdk 'JDK17'
-    maven 'Maven_3.9.9'
-  }
-
   stages {
     stage('Checkout') {
       steps {
@@ -22,7 +17,7 @@ pipeline {
     stage('Maven unit tests') {
       steps {
         dir("${env.SERVICE_DIR}") {
-          sh 'mvn -B -q test'
+          sh 'docker run --rm -v "$WORKSPACE:/ws" -v "$HOME/.m2:/root/.m2" -w "/ws/${SERVICE_DIR}" maven:3.9.9-eclipse-temurin-17 mvn -B -q test'
         }
       }
     }
@@ -31,7 +26,7 @@ pipeline {
       steps {
         dir("${env.SERVICE_DIR}") {
           withSonarQubeEnv('SonarQube') {
-            sh "mvn -B -q sonar:sonar -Dsonar.projectKey=${env.SONAR_KEY}"
+            sh 'docker run --rm -v "$WORKSPACE:/ws" -v "$HOME/.m2:/root/.m2" -w "/ws/${SERVICE_DIR}" -e SONAR_HOST_URL -e SONAR_AUTH_TOKEN maven:3.9.9-eclipse-temurin-17 mvn -B -q sonar:sonar -Dsonar.projectKey=${SONAR_KEY}'
           }
         }
       }
