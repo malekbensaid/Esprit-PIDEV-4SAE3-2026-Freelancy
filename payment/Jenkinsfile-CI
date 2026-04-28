@@ -2,7 +2,8 @@ pipeline {
   agent any
 
   environment {
-    SERVICE_DIR = 'payment'
+    SERVICE_BRANCH = 'Payment'
+    SERVICE_DIR = 'service'
     IMAGE_NAME  = 'my-dockerhub/payment:latest'
     SONAR_KEY   = 'payment'
   }
@@ -11,6 +12,17 @@ pipeline {
     stage('Checkout') {
       steps {
         checkout scm
+      }
+    }
+
+    stage('Checkout service code') {
+      steps {
+        script {
+          env.REPO_URL = scm.userRemoteConfigs[0].url
+        }
+        dir("${env.SERVICE_DIR}") {
+          checkout([$class: 'GitSCM', branches: [[name: "*/${env.SERVICE_BRANCH}"]], userRemoteConfigs: [[url: env.REPO_URL]]])
+        }
       }
     }
 
@@ -42,7 +54,10 @@ pipeline {
 
     stage('Docker build and tag') {
       steps {
-        sh "docker build -t ${env.IMAGE_NAME} -f payment/Dockerfile payment"
+        dir("${env.SERVICE_DIR}") {
+          sh 'cp "$WORKSPACE/payment/Dockerfile" Dockerfile'
+          sh "docker build -t ${env.IMAGE_NAME} -f Dockerfile ."
+        }
       }
     }
   }

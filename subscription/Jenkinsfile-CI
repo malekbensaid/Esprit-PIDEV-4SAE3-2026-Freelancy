@@ -2,7 +2,8 @@ pipeline {
   agent any
 
   environment {
-    SERVICE_DIR = 'subscription'
+    SERVICE_BRANCH = 'Subscription'
+    SERVICE_DIR = 'service'
     IMAGE_NAME  = 'my-dockerhub/subscription:latest'
     SONAR_KEY   = 'subscription'
   }
@@ -11,6 +12,17 @@ pipeline {
     stage('Checkout') {
       steps {
         checkout scm
+      }
+    }
+
+    stage('Checkout service code') {
+      steps {
+        script {
+          env.REPO_URL = scm.userRemoteConfigs[0].url
+        }
+        dir("${env.SERVICE_DIR}") {
+          checkout([$class: 'GitSCM', branches: [[name: "*/${env.SERVICE_BRANCH}"]], userRemoteConfigs: [[url: env.REPO_URL]]])
+        }
       }
     }
 
@@ -42,7 +54,10 @@ pipeline {
 
     stage('Docker build and tag') {
       steps {
-        sh "docker build -t ${env.IMAGE_NAME} -f subscription/Dockerfile subscription"
+        dir("${env.SERVICE_DIR}") {
+          sh 'cp "$WORKSPACE/subscription/Dockerfile" Dockerfile'
+          sh "docker build -t ${env.IMAGE_NAME} -f Dockerfile ."
+        }
       }
     }
   }
