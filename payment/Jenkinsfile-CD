@@ -1,0 +1,40 @@
+pipeline {
+  agent any
+
+  environment {
+    IMAGE_NAME     = 'my-dockerhub/payment:latest'
+    CONTAINER_NAME = 'payment-service'
+    HOST_PORT      = '8092'
+    CONTAINER_PORT = '8092'
+  }
+
+  stages {
+    stage('Docker login') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')]) {
+          sh 'echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USER" --password-stdin'
+        }
+      }
+    }
+
+    stage('Push image') {
+      steps {
+        sh "docker push ${env.IMAGE_NAME}"
+      }
+    }
+
+    stage('Stop old container') {
+      steps {
+        sh "docker rm -f ${env.CONTAINER_NAME} || true"
+      }
+    }
+
+    stage('Run new container') {
+      steps {
+        sh "docker pull ${env.IMAGE_NAME}"
+        sh "docker run -d --restart unless-stopped --name ${env.CONTAINER_NAME} -p ${env.HOST_PORT}:${env.CONTAINER_PORT} ${env.IMAGE_NAME}"
+      }
+    }
+  }
+}
+

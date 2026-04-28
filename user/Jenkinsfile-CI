@@ -1,0 +1,50 @@
+pipeline {
+  agent any
+
+  environment {
+    SERVICE_DIR = 'user/smart-freelance-backend'
+    IMAGE_NAME  = 'my-dockerhub/user:latest'
+    SONAR_KEY   = 'user'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Maven unit tests') {
+      steps {
+        dir("${env.SERVICE_DIR}") {
+          sh 'mvn -B -q test'
+        }
+      }
+    }
+
+    stage('SonarQube analysis') {
+      steps {
+        dir("${env.SERVICE_DIR}") {
+          withSonarQubeEnv('SonarQube') {
+            sh "mvn -B -q sonar:sonar -Dsonar.projectKey=${env.SONAR_KEY}"
+          }
+        }
+      }
+    }
+
+    stage('Quality Gate') {
+      steps {
+        timeout(time: 10, unit: 'MINUTES') {
+          waitForQualityGate abortPipeline: true
+        }
+      }
+    }
+
+    stage('Docker build and tag') {
+      steps {
+        sh "docker build -t ${env.IMAGE_NAME} -f user/Dockerfile user"
+      }
+    }
+  }
+}
+

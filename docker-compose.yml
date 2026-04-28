@@ -1,0 +1,103 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+
+  eureka:
+    build:
+      context: ./Pidev4SAE3_Freelancy-eureka-server
+    ports:
+      - "8761:8761"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  api-gateway:
+    build:
+      context: ./Pidev4SAE3_Freelancy-api-gateway
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka
+    ports:
+    
+      - "8077:8080"
+    depends_on:
+      eureka:
+        condition: service_started
+
+  subscription-service:
+    image: my-dockerhub/subscription:latest
+    build:
+      context: ./subscription
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    ports:
+      - "8089:8091"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka:
+        condition: service_started
+
+  payment-service:
+    image: my-dockerhub/payment:latest
+    build:
+      context: ./payment
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    ports:
+      - "8092:8092"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka:
+        condition: service_started
+      mailhog:
+        condition: service_started
+      api-gateway:
+        condition: service_started
+
+  user-service:
+    image: my-dockerhub/user:latest
+    build:
+      context: ./user
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    ports:
+      - "8090:8090"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka:
+        condition: service_started
+
+volumes:
+  mysql_data:

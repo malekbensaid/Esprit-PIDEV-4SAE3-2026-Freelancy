@@ -1,0 +1,50 @@
+pipeline {
+  agent any
+
+  environment {
+    SERVICE_DIR = 'subscription'
+    IMAGE_NAME  = 'my-dockerhub/subscription:latest'
+    SONAR_KEY   = 'subscription'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Maven unit tests') {
+      steps {
+        dir("${env.SERVICE_DIR}") {
+          sh 'mvn -B -q test'
+        }
+      }
+    }
+
+    stage('SonarQube analysis') {
+      steps {
+        dir("${env.SERVICE_DIR}") {
+          withSonarQubeEnv('SonarQube') {
+            sh "mvn -B -q sonar:sonar -Dsonar.projectKey=${env.SONAR_KEY}"
+          }
+        }
+      }
+    }
+
+    stage('Quality Gate') {
+      steps {
+        timeout(time: 10, unit: 'MINUTES') {
+          waitForQualityGate abortPipeline: true
+        }
+      }
+    }
+
+    stage('Docker build and tag') {
+      steps {
+        sh "docker build -t ${env.IMAGE_NAME} -f subscription/Dockerfile subscription"
+      }
+    }
+  }
+}
+
