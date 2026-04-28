@@ -7,6 +7,11 @@ pipeline {
     SONAR_KEY   = 'user'
   }
 
+  tools {
+    jdk 'JDK17'
+    maven 'Maven_3.9.9'
+  }
+
   stages {
     stage('Checkout') {
       steps {
@@ -47,4 +52,3 @@ pipeline {
     }
   }
 }
-
