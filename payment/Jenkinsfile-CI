@@ -2,7 +2,7 @@ pipeline {
   agent any
 
   environment {
-    SERVICE_BRANCH = 'Payment'
+    SERVICE_BRANCH = 'payment'
     SERVICE_DIR = 'service'
     IMAGE_NAME  = 'my-dockerhub/payment:latest'
     SONAR_KEY   = 'payment'
