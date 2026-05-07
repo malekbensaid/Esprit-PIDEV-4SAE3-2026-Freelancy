@@ -32,9 +32,7 @@ pipeline {
     }
   }
 
-    // ========================
-    // 1. CHECKOUT CODE
-    // ========================
+   
     stage('Checkout') {
       steps {
         git branch: "${env.GIT_BRANCH}",
@@ -42,26 +40,7 @@ pipeline {
             credentialsId: "${env.GIT_CREDENTIALS}"
       }
     }
-    stage('SHOW REAL POMS') {
-  steps {
-    sh """
-    echo "=== ALL POM FILES WITH DETAILS ==="
-    find . -name pom.xml -exec ls -la {} \\;
-    """
-  }
-}
-
-stage('INSPECT POM') {
-  steps {
-    sh """
-    cat smart-freelance-backend/pom.xml
-    """
-  }
-}
-
-    // ========================
-    // 2. BUILD + TEST (DOCKER MAVEN)
-    // ========================
+    
    stage('Build & Test') {
   steps {
     sh """
@@ -80,9 +59,7 @@ stage('DEBUG FILES') {
   }
 }
 
-    // ========================
-    // 3. SONAR ANALYSIS
-    // ========================
+   
    stage('SonarQube') {
   steps {
     withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
@@ -100,18 +77,14 @@ stage('DEBUG FILES') {
   }
 }
 
-    // ========================
-    // 4. DOCKER BUILD
-    // ========================
+ 
     stage('Docker Build') {
       steps {
         sh "docker build -t ${env.IMAGE_NAME} -t ${env.IMAGE_LATEST} -f payment/Dockerfile ."
       }
     }
 
-    // ========================
-    // 5. DOCKER PUSH
-    // ========================
+    
     stage('Docker Push') {
       steps {
         withCredentials([usernamePassword(
@@ -128,9 +101,7 @@ stage('DEBUG FILES') {
       }
     }
 
-    // ========================
-    // 6. TRIGGER CD
-    // ========================
+   
     stage('Trigger CD') {
       steps {
         build job: 'payment-cd',
