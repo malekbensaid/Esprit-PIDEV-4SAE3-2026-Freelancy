@@ -1,64 +1,152 @@
 pipeline {
   agent any
 
+  options {
+    timestamps()
+    timeout(time: 60, unit: 'MINUTES')
+    skipDefaultCheckout(true)
+  }
+
   environment {
-    SERVICE_BRANCH = 'Payment'
-    SERVICE_DIR = 'service'
-    IMAGE_NAME  = 'my-dockerhub/payment:latest'
-    SONAR_KEY   = 'payment'
+    GIT_REPO = 'https://github.com/malekbensaid/Esprit-PIDEV-4SAE3-2026-Freelancy.git'
+    GIT_BRANCH = 'user'
+    GIT_CREDENTIALS = 'git-credentials'
+
+    SERVICE_POM = 'service/pom.xml'
+    SERVICE_NAME = 'payment-service'
+
+    SONARQUBE_SERVER = 'SonarQube'
+    SONAR_PROJECT_KEY = 'payment-service'
+
+    DOCKERHUB_NAMESPACE = 'pidevfreelancy'
+    IMAGE_TAG = "${BUILD_NUMBER}"
+    IMAGE_NAME = "${DOCKERHUB_NAMESPACE}/${SERVICE_NAME}:${IMAGE_TAG}"
+    IMAGE_LATEST = "${DOCKERHUB_NAMESPACE}/${SERVICE_NAME}:latest"
   }
 
   stages {
+      
+      stage('Clean Workspace') {
+    steps {
+      cleanWs()
+    }
+  }
+
+    // ========================
+    // 1. CHECKOUT CODE
+    // ========================
     stage('Checkout') {
       steps {
-        checkout scm
+        git branch: "${env.GIT_BRANCH}",
+            url: "${env.GIT_REPO}",
+            credentialsId: "${env.GIT_CREDENTIALS}"
+      }
+    }
+    stage('SHOW REAL POMS') {
+  steps {
+    sh """
+    echo "=== ALL POM FILES WITH DETAILS ==="
+    find . -name pom.xml -exec ls -la {} \\;
+    """
+  }
+}
+
+stage('INSPECT POM') {
+  steps {
+    sh """
+    cat smart-freelance-backend/pom.xml
+    """
+  }
+}
+
+    // ========================
+    // 2. BUILD + TEST (DOCKER MAVEN)
+    // ========================
+   stage('Build & Test') {
+  steps {
+    sh """
+    docker run --rm \
+      --volumes-from jenkins \
+      -w /var/jenkins_home/workspace/payment-ci/smart-freelance-backend \
+      maven:3.9.6-eclipse-temurin-17 \
+      mvn clean install -DskipTests
+    """
+  }
+}
+
+stage('DEBUG FILES') {
+  steps {
+    sh "ls -R"
+  }
+}
+
+    // ========================
+    // 3. SONAR ANALYSIS
+    // ========================
+   stage('SonarQube') {
+  steps {
+    withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+      sh """
+      docker run --rm \
+        --volumes-from jenkins \
+        -w /var/jenkins_home/workspace/payment-ci/smart-freelance-backend \
+        maven:3.9.6-eclipse-temurin-17 \
+        mvn sonar:sonar \
+        -Dsonar.projectKey=payment-service \
+        -Dsonar.host.url=http://192.168.56.10:9000 \
+        -Dsonar.login=$SONAR_TOKEN
+      """
+    }
+  }
+}
+
+    // ========================
+    // 4. DOCKER BUILD
+    // ========================
+    stage('Docker Build') {
+      steps {
+        sh "docker build -t ${env.IMAGE_NAME} -t ${env.IMAGE_LATEST} -f payment/Dockerfile ."
       }
     }
 
-    stage('Checkout service code') {
+    // ========================
+    // 5. DOCKER PUSH
+    // ========================
+    stage('Docker Push') {
       steps {
-        script {
-          env.REPO_URL = scm.userRemoteConfigs[0].url
-        }
-        dir("${env.SERVICE_DIR}") {
-          checkout([$class: 'GitSCM', branches: [[name: "*/${env.SERVICE_BRANCH}"]], userRemoteConfigs: [[url: env.REPO_URL]]])
+        withCredentials([usernamePassword(
+  credentialsId: 'docker-hub-credentials',
+          usernameVariable: 'DOCKER_USER',
+          passwordVariable: 'DOCKER_PASS'
+        )]) {
+          sh """
+          echo "\$DOCKER_PASS" | docker login -u "\$DOCKER_USER" --password-stdin
+          docker push ${env.IMAGE_NAME}
+          docker push ${env.IMAGE_LATEST}
+          """
         }
       }
     }
 
-    stage('Maven unit tests') {
+    // ========================
+    // 6. TRIGGER CD
+    // ========================
+    stage('Trigger CD') {
       steps {
-        dir("${env.SERVICE_DIR}") {
-          sh 'mvn -B -q test'
-        }
+        build job: 'payment-cd',
+              wait: false,
+              propagate: false
       }
     }
 
-    stage('SonarQube analysis') {
-      steps {
-        dir("${env.SERVICE_DIR}") {
-          withSonarQubeEnv('SonarQube') {
-            sh 'mvn -B -q sonar:sonar -Dsonar.projectKey=${SONAR_KEY} -Dsonar.token=$SONAR_AUTH_TOKEN'
-          }
-        }
-      }
-    }
+  }
 
-    stage('Quality Gate') {
-      steps {
-        timeout(time: 10, unit: 'MINUTES') {
-          waitForQualityGate abortPipeline: true
-        }
-      }
+  post {
+    success {
+      echo "✅ CI SUCCESS"
     }
-
-    stage('Docker build and tag') {
-      steps {
-        dir("${env.SERVICE_DIR}") {
-          sh 'cp "$WORKSPACE/payment/Dockerfile" Dockerfile'
-          sh "docker build -t ${env.IMAGE_NAME} -f Dockerfile ."
-        }
-      }
+    failure {
+      echo "❌ CI FAILED"
     }
   }
 }
