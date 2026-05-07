@@ -2,39 +2,82 @@ pipeline {
   agent any
 
   environment {
-    IMAGE_NAME     = 'my-dockerhub/payment:latest'
-    CONTAINER_NAME = 'payment-service'
-    HOST_PORT      = '8092'
-    CONTAINER_PORT = '8092'
+    DOCKERHUB_NAMESPACE = 'pidevfreelancy'
+    SERVICE_NAME = 'payment-service'
+    IMAGE = "${DOCKERHUB_NAMESPACE}/${SERVICE_NAME}:latest"
+
+    CONTAINER_NAME = 'payment-container'
+    HOST_PORT = '8092'
+    CONTAINER_PORT = '8080'
   }
 
   stages {
-    stage('Docker login') {
+
+    // ========================
+    // 1. DOCKER LOGIN
+    // ========================
+    stage('Docker Login') {
       steps {
-        withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')]) {
-          sh 'echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USER" --password-stdin'
+        withCredentials([usernamePassword(
+  credentialsId: 'docker-hub-credentials',
+          usernameVariable: 'DOCKER_USER',
+          passwordVariable: 'DOCKER_PASS'
+        )]) {
+          sh """
+          echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+          """
         }
       }
     }
 
-    stage('Push image') {
+    // ========================
+    // 2. PULL IMAGE
+    // ========================
+    stage('Pull Image') {
       steps {
-        sh "docker push ${env.IMAGE_NAME}"
+        sh "docker pull ${IMAGE}"
       }
     }
 
-    stage('Stop old container') {
+    // ========================
+    // 3. STOP OLD CONTAINER
+    // ========================
+    stage('Stop Old Container') {
       steps {
-        sh "docker rm -f ${env.CONTAINER_NAME} || true"
+        sh """
+        docker stop ${CONTAINER_NAME} || true
+        docker rm ${CONTAINER_NAME} || true
+        """
       }
     }
 
-    stage('Run new container') {
-      steps {
-        sh "docker pull ${env.IMAGE_NAME}"
-        sh "docker run -d --restart unless-stopped --name ${env.CONTAINER_NAME} -p ${env.HOST_PORT}:${env.CONTAINER_PORT} ${env.IMAGE_NAME}"
-      }
+    // ========================
+    // 4. RUN NEW CONTAINER
+    // ========================
+    stage('Run Container') {
+  steps {
+    sh """
+    docker rm -f ${CONTAINER_NAME} || true
+
+    sudo fuser -k 8092/tcp || true
+
+    docker run -d \
+      --name ${CONTAINER_NAME} \
+      --add-host=host.docker.internal:host-gateway \
+      -p ${HOST_PORT}:${CONTAINER_PORT} \
+      ${IMAGE}
+    """
+    }
+  }
+
+  }
+
+  post {
+    success {
+      echo "🚀 CD SUCCESS - Payment deployed!"
+    }
+    failure {
+      echo "❌ CD FAILED"
     }
   }
 }
-
